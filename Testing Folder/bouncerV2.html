@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Bouncing Overlay</title>
+    <style>
+        html, body {
+            margin: 0;
+            overflow: hidden;
+            background: transparent;
+        }
+            canvas {
+            display: block;
+            background: transparent;
+            }
+    </style>
+</head>
+<body>
+<canvas id="bounceCanvas"></canvas>
+<script>
+    const imageSrc = "assets/64x64.png"; // Use your own image here
+    const speed = 2.5;
+
+    const canvas = document.getElementById("bounceCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let img = new Image();
+    img.src = imageSrc;
+    img.onload = () => {
+        resizeCanvas();
+        initializePosition();
+        requestAnimationFrame(update);
+    };
+
+    window.addEventListener('resize', resizeCanvas);
+
+    function resizeCanvas() {
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+
+        const targetAspect = 16 / 9;
+        const windowAspect = windowWidth / windowHeight;
+
+        if (windowAspect > targetAspect) {
+        canvas.height = windowHeight;
+        canvas.width = windowHeight * targetAspect;
+        } else {
+        canvas.width = windowWidth;
+        canvas.height = windowWidth / targetAspect;
+        }
+
+        canvas.style.position = "absolute";
+        canvas.style.left = ((windowWidth - canvas.width) / 2) + "px";
+        canvas.style.top = ((windowHeight - canvas.height) / 2) + "px";
+    }
+
+    let x = 100, y = 100;
+    let dx = (Math.random() < 0.5 ? -1 : 1) * speed;
+    let dy = (Math.random() < 0.5 ? -1 : 1) * speed;
+    let tintHue = 0;
+
+    function initializePosition() {
+        x = Math.random() * (canvas.width - img.width);
+        y = Math.random() * (canvas.height - img.height);
+    }
+
+    function update() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        x += dx;
+        y += dy;
+
+        let hitWall = false;
+
+        if (x + img.width >= canvas.width || x <= 0) {
+            dx *= -1;
+            hitWall = true;
+        }
+
+        if (y + img.height >= canvas.height || y <= 0) {
+            dy *= -1;
+            hitWall = true;
+        }
+
+        if (hitWall && isInCorner()) {
+            tintHue = (tintHue + 90) % 360;
+        }
+
+        ctx.save();
+        ctx.translate(x + img.width / 2, y + img.height / 2);
+        ctx.filter = `hue-rotate(${tintHue}deg)`;
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        ctx.restore();
+
+        requestAnimationFrame(update);
+    }
+
+    function isInCorner() {
+        const atLeft = Math.round(x) === 0;
+        const atRight = Math.round(x + img.width) === Math.round(canvas.width);
+        const atTop = Math.round(y) === 0;
+        const atBottom = Math.round(y + img.height) === Math.round(canvas.height);
+        return (atLeft || atRight) && (atTop || atBottom);
+    }
+</script>
+</body>
+</html>

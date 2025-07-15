@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Bouncer</title>
+    <style>
+        html, body {
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+        }
+        canvas {
+        display: block;
+        background: transparent;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ✅ Canvas must be here -->
+<canvas id="bounceCanvas"></canvas>
+
+<script>
+    window.onload = function () {
+        const imageSrc = "assets/64x64.png";
+        const speed = 3;
+        const runTime = 60000; // 60 seconds
+
+        // Sounds
+        const startSound = new Audio("assets/start_audio.mp3");
+        const endSound = new Audio("assets/end_audio.mp3");
+        const winSound = new Audio("assets/win_audio.mp3");
+
+        const canvas = document.getElementById("bounceCanvas");
+        const ctx = canvas.getContext("2d");
+
+        let showLabels = false;           // whether to currently show labels
+        let lastLabelToggle = Date.now(); // timestamp of last cycle
+        let labelAlpha = 0;               // for fade in/out
+        let fadeSpeed = 0.05;             // controls fade speed
+
+
+        // Track corner lords
+        let cornerLords = {
+            NE: "",
+            NW: "",
+            SE: "",
+            SW: ""
+        };
+
+        let img = new Image();
+        img.src = imageSrc;
+        img.onload = () => {
+            resizeCanvas();
+            initializePosition();
+            connectWebSocket();
+
+            lastLabelToggle = Date.now();
+            update();
+        };
+
+        let x = 100, y = 100;
+        let direction_x = (Math.random() < 0.5 ? -1 : 1) * speed;
+        let direction_y = (Math.random() < 0.5 ? -1 : 1) * speed;
+        let tintHue = 0;
+
+        let running = false;
+        let animationFrameId = null;
+
+        let currentUserName = null;
+        let ws;
+        let winCondition = false;
+
+        let corner = "";
+        const atLeft = Math.round(x) === 0;
+        const atRight = Math.round(x + img.width) === Math.round(canvas.width);
+        const atTop = Math.round(y) === 0;
+        const atBottom = Math.round(y + img.height) === Math.round(canvas.height);
+
+        function resizeCanvas() {
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+
+            const targetAspect = 16 / 9;
+            const windowAspect = windowWidth / windowHeight;
+
+            if (windowAspect > targetAspect) {
+                canvas.height = windowHeight;
+                canvas.width = windowHeight * targetAspect;
+            } else {
+                canvas.width = windowWidth;
+                canvas.height = windowWidth / targetAspect;
+            }
+
+            canvas.style.position = "absolute";
+            canvas.style.left = ((windowWidth - canvas.width) / 2) + "px";
+            canvas.style.top = ((windowHeight - canvas.height) / 2) + "px";
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function initializePosition() {
+            x = Math.random() * (canvas.width - img.width);
+            y = Math.random() * (canvas.height - img.height);
+        }
+
+        function update() {
+            // calculate time-based toggle
+            const now = Date.now();
+            const elapsedSinceToggle = now - lastLabelToggle;
+            const cycleTime = elapsedSinceToggle % (5 * 60 * 1000);
+
+            // show labels in first 60s of every 5-minute cycle
+            showLabels = cycleTime < 60 * 1000;
+
+            // always show labels if game is running
+            if (running) {
+                showLabels = true;
+            }
+
+            // clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // fade logic
+            if (showLabels && labelAlpha < 1) {
+                labelAlpha += fadeSpeed;
+                if (labelAlpha > 1) labelAlpha = 1;
+            } else if (!showLabels && labelAlpha > 0) {
+                labelAlpha -= fadeSpeed;
+                if (labelAlpha < 0) labelAlpha = 0;
+            }
+
+            // draw corner lords with fade if alpha > 0
+            if (labelAlpha > 0) {
+                ctx.save();
+                ctx.globalAlpha = labelAlpha;
+                ctx.font = "bold 28px Arial";
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = "black";
+                ctx.fillStyle = "white";
+
+                function drawCornerLabel(text, x, y, align, baseline) {
+                    ctx.font = "bold 28px Arial";
+                    ctx.textAlign = align;
+                    ctx.textBaseline = baseline;
+
+                    const paddingX = 8;
+                    const paddingY = 6;
+                    const metrics = ctx.measureText(text);
+                    const textWidth = metrics.width;
+                    const textHeight = 28; // approximate height
+
+                    // background box position
+                    let boxX = x;
+                    let boxY = y;
+
+                    if (align === "left") {
+                        boxX = x - paddingX;
+                    } else if (align === "center") {
+                        boxX = x - textWidth / 2 - paddingX;
+                    } else if (align === "right") {
+                        boxX = x - textWidth - paddingX;
+                    }
+
+                    if (baseline === "top") {
+                        boxY = y - paddingY;
+                    } else if (baseline === "middle") {
+                        boxY = y - textHeight / 2 - paddingY;
+                    } else if (baseline === "bottom") {
+                        boxY = y - textHeight - paddingY;
+                    }
+
+                    // draw background
+                    ctx.fillStyle = "rgba(0,0,0,0.6)";
+                    ctx.fillRect(boxX, boxY, textWidth + paddingX * 2, textHeight + paddingY * 2);
+
+                    // draw text
+                    ctx.fillStyle = "white";
+                    ctx.strokeStyle = "black";
+                    ctx.lineWidth = 4;
+                    ctx.strokeText(text, x, y);
+                    ctx.fillText(text, x, y);
+                }
+
+                // ✅ call helper for each corner
+                if (cornerLords.NW) drawCornerLabel(cornerLords.NW, 10, 10, "left", "top");
+                if (cornerLords.NE) drawCornerLabel(cornerLords.NE, canvas.width - 10, 10, "right", "top");
+                if (cornerLords.SW) drawCornerLabel(cornerLords.SW, 10, canvas.height - 10, "left", "bottom");
+                if (cornerLords.SE) drawCornerLabel(cornerLords.SE, canvas.width - 10, canvas.height - 10, "right", "bottom");
+
+                ctx.restore();
+            } // ✅ close the labelAlpha if-block here!
+
+            // 🚀 animation of bouncing image
+            if (running) {
+                x += direction_x;
+                y += direction_y;
+
+                let hitWall = false;
+                if (x + img.width >= canvas.width || x <= 0) {
+                    direction_x *= -1;
+                    hitWall = true;
+                }
+                if (y + img.height >= canvas.height || y <= 0) {
+                    direction_y *= -1;
+                    hitWall = true;
+                }
+
+                if (hitWall && isInCorner()) {
+                    tintHue = (tintHue + 90) % 360;
+                    winCondition = true;
+                    winSound.currentTime = 0;
+                    winSound.play().catch(()=>{});
+
+                    const atLeft = Math.round(x) === 0;
+                    const atRight = Math.round(x + img.width) === Math.round(canvas.width);
+                    const atTop = Math.round(y) === 0;
+                    const atBottom = Math.round(y + img.height) === Math.round(canvas.height);
+
+                    let corner = "";
+                    if (atLeft && atTop) corner = "NW";
+                    else if (atRight && atTop) corner = "NE";
+                    else if (atLeft && atBottom) corner = "SW";
+                    else if (atRight && atBottom) corner = "SE";
+
+                    if (corner) {
+                        ws.send(JSON.stringify({
+                            type: "corner_hit",
+                            user: currentUserName,
+                            corner: corner
+                        }));
+                    }
+                }
+
+                ctx.save();
+                ctx.translate(x + img.width / 2, y + img.height / 2);
+                ctx.filter = `hue-rotate(${tintHue}deg)`;
+                ctx.drawImage(img, -img.width / 2, -img.height / 2);
+                ctx.restore();
+            }
+
+            // schedule next frame
+            animationFrameId = requestAnimationFrame(update);
+        }
+
+        function isInCorner() {
+            const atLeft = Math.round(x) === 0;
+            const atRight = Math.round(x + img.width) === Math.round(canvas.width);
+            const atTop = Math.round(y) === 0;
+            const atBottom = Math.round(y + img.height) === Math.round(canvas.height);
+            return (atLeft || atRight) && (atTop || atBottom);
+        }
+
+        function startAnimation() {
+            if (running) return;
+            console.log("🎉 Starting animation for 60 seconds");
+            running = true;
+
+            // Only play audio if sounds are enabled
+            if (typeof soundsEnabled !== 'undefined' && soundsEnabled) {
+                startSound.currentTime = 0;
+                startSound.play().catch(err => console.log("Audio play blocked:", err));
+            }
+
+            initializePosition();
+            update();
+
+            setTimeout(() => {
+                running = false;
+                cancelAnimationFrame(animationFrameId);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                console.log("🛑 Animation stopped");
+
+                if (!winCondition) {
+                    endSound.currentTime = 0;
+                    endSound.play();
+                    //alert("Time's up! You didn't win this time.");
+                };
+            }, runTime); 
+        }
+
+        function connectWebSocket() {
+            ws = new WebSocket("ws://localhost:8765");
+
+            ws.onmessage = (event) => {
+                console.log("🟡 Message received:", event.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === "start") {
+                        currentUserName = data.user;
+                        startAnimation();
+                    }
+                    else if (data.type === "corner_hit") {
+                        // update corner lord info
+                        const user = data.user;
+                        const corner = data.corner;
+                        cornerLords[corner] = user;
+                        console.log(`📌 ${user} is now Lord of ${corner}`);
+                    }
+                    else if (data.type === "corner_lords_snapshot") {
+                        // ✅ Populate cornerLords immediately on connect
+                        const snapshot = data.data;
+                        cornerLords.NW = snapshot.NW || null;
+                        cornerLords.NE = snapshot.NE || null;
+                        cornerLords.SW = snapshot.SW || null;
+                        cornerLords.SE = snapshot.SE || null;
+                        console.log("📥 Loaded corner lords snapshot:", snapshot);
+                    }
+                } catch (err) {
+                    console.error("❌ Failed to parse message", err);
+                }
+            };
+
+            ws.onopen = () => console.log("✅ WebSocket connected");
+            ws.onerror = (err) => console.error("❌ WebSocket error:", err);
+            ws.onclose = () => {
+                console.warn("🔁 WebSocket closed. Reconnecting in 5s...");
+                setTimeout(connectWebSocket, 5000);
+            };
+        }
+    };
+
+</script>
+
+</body>
+</html>
+
