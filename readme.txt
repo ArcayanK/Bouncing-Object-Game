@@ -24,7 +24,7 @@ or
 Function 2: Bouncing Object Game
 1. Open "bouncer.html"
 2. Run websocket_trigger.py
-    a. python websocket_trigger.py
+    a. python -m core.websocket_trigger
         * you should see "✅ WebSocket server running on ws://localhost:8765" in terminal
 2. Trigger:
     a. Manual Trigger

@@ -22,7 +22,12 @@
 
 <script>
     window.onload = function () {
-        const imageSrc = "assets/64x64.png";
+        // options
+        /*
+        assets/64x64.png
+        assets/thor_96x96.png
+        */
+        const imageSrc = "assets/thor_96x96.png";
         const speed = 3;
         const runTime = 60000; // 60 seconds
 
@@ -33,6 +38,8 @@
 
         const canvas = document.getElementById("bounceCanvas");
         const ctx = canvas.getContext("2d");
+
+        let objects = [];
 
         let showLabels = false;           // whether to currently show labels
         let lastLabelToggle = Date.now(); // timestamp of last cycle
@@ -50,19 +57,15 @@
 
         let img = new Image();
         img.src = imageSrc;
+
         img.onload = () => {
             resizeCanvas();
-            initializePosition();
+            // initializePosition();
             connectWebSocket();
 
             lastLabelToggle = Date.now();
             update();
         };
-
-        let x = 100, y = 100;
-        let direction_x = (Math.random() < 0.5 ? -1 : 1) * speed;
-        let direction_y = (Math.random() < 0.5 ? -1 : 1) * speed;
-        let tintHue = 0;
 
         let running = false;
         let animationFrameId = null;
@@ -71,11 +74,11 @@
         let ws;
         let winCondition = false;
 
-        let corner = "";
-        const atLeft = Math.round(x) === 0;
-        const atRight = Math.round(x + img.width) === Math.round(canvas.width);
-        const atTop = Math.round(y) === 0;
-        const atBottom = Math.round(y + img.height) === Math.round(canvas.height);
+        // let corner = "";
+        // const atLeft = Math.round(x) === 0;
+        // const atRight = Math.round(x + img.width) === Math.round(canvas.width);
+        // const atTop = Math.round(y) === 0;
+        // const atBottom = Math.round(y + img.height) === Math.round(canvas.height);
 
         function resizeCanvas() {
             const windowWidth = window.innerWidth;
@@ -99,12 +102,24 @@
 
         window.addEventListener('resize', resizeCanvas);
 
-        function initializePosition() {
-            x = Math.random() * (canvas.width - img.width);
-            y = Math.random() * (canvas.height - img.height);
+        function spawnObjects(count = 1) {
+            for (let i = 0; i < count; i++) {
+                objects.push({
+                    x: Math.random() * (canvas.width - img.width),
+                    y: Math.random() * (canvas.height - img.height),
+                    dx: (Math.random() < 0.5 ? -1 : 1) * speed,
+                    dy: (Math.random() < 0.5 ? -1 : 1) * speed,
+                    tintHue: Math.floor(Math.random() * 360),
+                });
+            }
+            console.log("✅ Object count:", objects.length);
         }
+        
 
         function update() {
+            // clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
             // calculate time-based toggle
             const now = Date.now();
             const elapsedSinceToggle = now - lastLabelToggle;
@@ -118,8 +133,7 @@
                 showLabels = true;
             }
 
-            // clear canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
 
             // fade logic
             if (showLabels && labelAlpha < 1) {
@@ -191,93 +205,97 @@
                 ctx.restore();
             } // ✅ close the labelAlpha if-block here!
 
-            // 🚀 animation of bouncing image
+            
+
             if (running) {
-                x += direction_x;
-                y += direction_y;
+                for (let obj of objects) {
+                    obj.x += obj.dx;
+                    obj.y += obj.dy;
 
-                let hitWall = false;
-                if (x + img.width >= canvas.width || x <= 0) {
-                    direction_x *= -1;
-                    hitWall = true;
-                }
-                if (y + img.height >= canvas.height || y <= 0) {
-                    direction_y *= -1;
-                    hitWall = true;
-                }
-
-                if (hitWall && isInCorner()) {
-                    tintHue = (tintHue + 90) % 360;
-                    winCondition = true;
-                    winSound.currentTime = 0;
-                    winSound.play().catch(()=>{});
-
-                    const atLeft = Math.round(x) === 0;
-                    const atRight = Math.round(x + img.width) === Math.round(canvas.width);
-                    const atTop = Math.round(y) === 0;
-                    const atBottom = Math.round(y + img.height) === Math.round(canvas.height);
-
-                    let corner = "";
-                    if (atLeft && atTop) corner = "NW";
-                    else if (atRight && atTop) corner = "NE";
-                    else if (atLeft && atBottom) corner = "SW";
-                    else if (atRight && atBottom) corner = "SE";
-
-                    if (corner) {
-                        ws.send(JSON.stringify({
-                            type: "corner_hit",
-                            user: currentUserName,
-                            corner: corner
-                        }));
+                    let hitWall = false;
+                    if (obj.x + img.width >= canvas.width || obj.x <= 0) {
+                        obj.dx *= -1;
+                        hitWall = true;
                     }
-                }
+                    if (obj.y + img.height >= canvas.height || obj.y <= 0) {
+                        obj.dy *= -1;
+                        hitWall = true;
+                    }
 
-                ctx.save();
-                ctx.translate(x + img.width / 2, y + img.height / 2);
-                ctx.filter = `hue-rotate(${tintHue}deg)`;
-                ctx.drawImage(img, -img.width / 2, -img.height / 2);
-                ctx.restore();
+                    if (hitWall && isInCorner(obj)) {
+                        obj.tintHue = (obj.tintHue + 90) % 360;
+                        winSound.currentTime = 0;
+                        winSound.play().catch(()=>{});
+
+                        if (obj.user) {
+                            console.log(`🏆 Latest winner: ${obj.user}`);
+                        } else {
+                            console.log("🏆 Latest winner: (unknown user)");
+                        }
+                    }
+
+                    ctx.save();
+                    ctx.translate(obj.x + img.width / 2, obj.y + img.height / 2);
+                    ctx.filter = `hue-rotate(${obj.tintHue}deg)`;
+                    ctx.drawImage(img, -img.width / 2, -img.height / 2);
+                    ctx.restore();
+                }
             }
 
-            // schedule next frame
-            animationFrameId = requestAnimationFrame(update);
+            requestAnimationFrame(update);
         }
 
-        function isInCorner() {
-            const atLeft = Math.round(x) === 0;
-            const atRight = Math.round(x + img.width) === Math.round(canvas.width);
-            const atTop = Math.round(y) === 0;
-            const atBottom = Math.round(y + img.height) === Math.round(canvas.height);
+        function isInCorner(obj) {
+            const atLeft = Math.round(obj.x) === 0;
+            const atRight = Math.round(obj.x + img.width) === Math.round(canvas.width);
+            const atTop = Math.round(obj.y) === 0;
+            const atBottom = Math.round(obj.y + img.height) === Math.round(canvas.height);
             return (atLeft || atRight) && (atTop || atBottom);
         }
 
-        function startAnimation() {
-            if (running) return;
-            console.log("🎉 Starting animation for 60 seconds");
-            running = true;
 
-            // Only play audio if sounds are enabled
+        function startAnimation() {
+            // If this is the first object, start the update loop
+            if (!running) {
+                running = true;
+                update();
+            }
+
+            // Spawn ONE new bouncing object
+            const obj = {
+                x: Math.random() * (canvas.width - img.width),
+                y: Math.random() * (canvas.height - img.height),
+                dx: (Math.random() < 0.5 ? -1 : 1) * speed,
+                dy: (Math.random() < 0.5 ? -1 : 1) * speed,
+                tintHue: Math.floor(Math.random() * 360),
+                createdAt: Date.now(),
+            };
+            objects.push(obj);
+
+            // Optional: play start sound
             if (typeof soundsEnabled !== 'undefined' && soundsEnabled) {
                 startSound.currentTime = 0;
                 startSound.play().catch(err => console.log("Audio play blocked:", err));
             }
 
-            initializePosition();
-            update();
-
+            // Set a timer to remove this object after `runTime`
             setTimeout(() => {
-                running = false;
-                cancelAnimationFrame(animationFrameId);
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                console.log("🛑 Animation stopped");
-
-                if (!winCondition) {
+                const index = objects.indexOf(obj);
+                if (index !== -1) {
+                    objects.splice(index, 1);
+                }
+                // If no objects left, stop animation
+                if (objects.length === 0) {
+                    running = false;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
                     endSound.currentTime = 0;
-                    endSound.play();
-                    //alert("Time's up! You didn't win this time.");
-                };
-            }, runTime); 
+                    endSound.play().catch(()=>{});
+                    console.log("🛑 No objects left, animation stopped.");
+                }
+            }, runTime);
         }
+
+
 
         function connectWebSocket() {
             ws = new WebSocket("ws://localhost:8765");
@@ -287,6 +305,7 @@
                 try {
                     const data = JSON.parse(event.data);
                     if (data.type === "start") {
+                        console.log("▶ start message received for", data.user);
                         currentUserName = data.user;
                         startAnimation();
                     }
