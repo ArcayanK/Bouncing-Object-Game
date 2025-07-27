@@ -26,8 +26,11 @@
         /*
         assets/64x64.png
         assets/thor_96x96.png
+        assets/thor_108x108.png
+        assets/thor_200x200.png
+        assets/thor_300x300.png
         */
-        const imageSrc = "assets/thor_96x96.png";
+        const imageSrc = "assets/thor_200x200.png";
         const speed = 3;
         const runTime = 60000; // 60 seconds
 
@@ -35,6 +38,10 @@
         const startSound = new Audio("assets/start_audio.mp3");
         const endSound = new Audio("assets/end_audio.mp3");
         const winSound = new Audio("assets/win_audio.mp3");
+
+        startSound.volume = 0.4;
+        endSound.volume = 0.4;
+        winSound.volume = 0.4;
 
         const canvas = document.getElementById("bounceCanvas");
         const ctx = canvas.getContext("2d");
@@ -115,6 +122,19 @@
             console.log("✅ Object count:", objects.length);
         }
         
+        function getCornerLabel(obj) {
+            const margin = 5;
+            const atLeft = obj.x <= margin;
+            const atRight = (obj.x + img.width) >= (canvas.width - margin);
+            const atTop = obj.y <= margin;
+            const atBottom = (obj.y + img.height) >= (canvas.height - margin);
+
+            if (atTop && atLeft) return "NW";
+            if (atTop && atRight) return "NE";
+            if (atBottom && atLeft) return "SW";
+            if (atBottom && atRight) return "SE";
+            return null;
+        }
 
         function update() {
             // clear canvas
@@ -229,6 +249,16 @@
 
                         if (obj.user) {
                             console.log(`🏆 Latest winner: ${obj.user}`);
+                            
+                            const corner = getCornerLabel(obj);
+                            if (corner && ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: "corner_hit",
+                                    user: obj.user,
+                                    corner: corner
+                                }));
+                                console.log(`📤 Sent corner_hit for ${obj.user} at ${corner}`);
+                            }
                         } else {
                             console.log("🏆 Latest winner: (unknown user)");
                         }
@@ -246,13 +276,15 @@
         }
 
         function isInCorner(obj) {
-            const atLeft = Math.round(obj.x) === 0;
-            const atRight = Math.round(obj.x + img.width) === Math.round(canvas.width);
-            const atTop = Math.round(obj.y) === 0;
-            const atBottom = Math.round(obj.y + img.height) === Math.round(canvas.height);
+            const margin = 5; // 👈 increase this for more generous corner detection
+
+            const atLeft = obj.x <= margin;
+            const atRight = (obj.x + img.width) >= (canvas.width - margin);
+            const atTop = obj.y <= margin;
+            const atBottom = (obj.y + img.height) >= (canvas.height - margin);
+
             return (atLeft || atRight) && (atTop || atBottom);
         }
-
 
         function startAnimation() {
             // If this is the first object, start the update loop
@@ -269,6 +301,7 @@
                 dy: (Math.random() < 0.5 ? -1 : 1) * speed,
                 tintHue: Math.floor(Math.random() * 360),
                 createdAt: Date.now(),
+                user: currentUserName || "Anonymous" // 👈 use currentUserName if available
             };
             objects.push(obj);
 

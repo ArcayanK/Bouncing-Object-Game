@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 DB_NAME = "game_stats.db"
 
@@ -50,7 +50,7 @@ def update_corner_lord(username, corner):
         ON CONFLICT(corner)
         DO UPDATE SET username = excluded.username,
                       updated_at = excluded.updated_at
-    ''', (corner, username, datetime.utcnow().isoformat()))
+    ''', (corner, username, datetime.now(timezone.utc).isoformat()))
     conn.commit()
     conn.close()
     print(f"✅ {username} is now Lord of {corner}")
@@ -72,9 +72,29 @@ def update_corner_king(username):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     # close previous king
-    c.execute('UPDATE CornerKing SET lost_king_at = ? WHERE lost_king_at IS NULL', (datetime.utcnow().isoformat(),))
+    c.execute('UPDATE CornerKing SET lost_king_at = ? WHERE lost_king_at IS NULL', (datetime.now(timezone.utc).isoformat(),))
     # insert new king
-    c.execute('INSERT INTO CornerKing (username, became_king_at) VALUES (?, ?)', (username, datetime.utcnow().isoformat()))
+    c.execute('INSERT INTO CornerKing (username, became_king_at) VALUES (?, ?)', (username, datetime.now(timezone.utc).isoformat()))
     conn.commit()
     conn.close()
     print(f"👑 {username} is now the Corner King!")
+
+
+if __name__ == "__main__":
+    # Make sure tables exist
+    init_db()
+
+    # OPTIONAL: Re-insert default corner rows if needed
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    initial_corners = ["NE", "NW", "SE", "SW"]
+    from datetime import datetime
+    for corner in initial_corners:
+        c.execute('''
+            INSERT INTO GameHierarchy (corner, username, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(corner) DO NOTHING
+        ''', (corner, "", datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    print("✅ Database initialized and default corners added.")

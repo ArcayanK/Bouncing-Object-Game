@@ -1,24 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <title>Bouncing Overlay</title>
-    <style>
-        html, body {
-            margin: 0;
-            overflow: hidden;
-            background: transparent;
-        }
-            canvas {
-            display: block;
-            background: transparent;
-            }
-    </style>
+<meta charset="UTF-8" />
+<title>Bouncing Overlay</title>
+<style>
+    html, body {
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+    }
+    canvas {
+        display: block;
+        background: transparent;
+        position: absolute;
+    }
+</style>
 </head>
 <body>
 <canvas id="bounceCanvas"></canvas>
 <script>
-    const imageSrc = "assets/64x64.png"; // Use your own image here
+    const imageSrc = "assets/thor_200x200.png"; // Your image
     const speed = 2.5;
 
     const canvas = document.getElementById("bounceCanvas");
@@ -32,7 +33,12 @@
         requestAnimationFrame(update);
     };
 
-    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+        // Re-clamp position to keep inside bounds after resize
+        x = Math.max(0, Math.min(x, canvas.width - img.width));
+        y = Math.max(0, Math.min(y, canvas.height - img.height));
+    });
 
     function resizeCanvas() {
         const windowWidth = window.innerWidth;
@@ -42,14 +48,15 @@
         const windowAspect = windowWidth / windowHeight;
 
         if (windowAspect > targetAspect) {
-        canvas.height = windowHeight;
-        canvas.width = windowHeight * targetAspect;
+            // Window too wide -> height fills, width letterboxed
+            canvas.height = windowHeight;
+            canvas.width = windowHeight * targetAspect;
         } else {
-        canvas.width = windowWidth;
-        canvas.height = windowWidth / targetAspect;
+            // Window too tall -> width fills, height letterboxed
+            canvas.width = windowWidth;
+            canvas.height = windowWidth / targetAspect;
         }
 
-        canvas.style.position = "absolute";
         canvas.style.left = ((windowWidth - canvas.width) / 2) + "px";
         canvas.style.top = ((windowHeight - canvas.height) / 2) + "px";
     }
@@ -66,17 +73,30 @@
 
     function update() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+
         x += dx;
         y += dy;
 
         let hitWall = false;
 
-        if (x + img.width >= canvas.width || x <= 0) {
+        // Bounce off horizontal walls
+        if (x <= 0) {
+            x = 0;
+            dx *= -1;
+            hitWall = true;
+        } else if (x + img.width >= canvas.width) {
+            x = canvas.width - img.width;
             dx *= -1;
             hitWall = true;
         }
 
-        if (y + img.height >= canvas.height || y <= 0) {
+        // Bounce off vertical walls
+        if (y <= 0) {
+            y = 0;
+            dy *= -1;
+            hitWall = true;
+        } else if (y + img.height >= canvas.height) {
+            y = canvas.height - img.height;
             dy *= -1;
             hitWall = true;
         }
